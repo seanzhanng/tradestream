@@ -62,7 +62,7 @@ export const STREAM_EVENTS: StreamEvent[] = [
     type: "tick",
     text: "[12:30:02.010] Tick • 189.31 @ 240",
   },
-  {
+    {
     id: "static-5",
     type: "tick",
     text: "[12:30:02.540] Tick • 189.33 @ 120",

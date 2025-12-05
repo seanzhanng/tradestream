@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   METRIC_DEFINITIONS,
-  FOCUS_SYMBOL,
   WATCHLIST_ITEMS,
 } from "@/lib/dashboardData";
 import type {
@@ -13,6 +12,7 @@ import type {
 } from "@/lib/dashboardData";
 import useMarketData, { TickEvent } from "@/hooks/useMarketData";
 import useAnalyticsData from "@/hooks/useAnalyticsData";
+import { useDashboardContext } from "@/context/DashboardContext";
 
 export interface PricePoint {
   timestamp: number;
@@ -27,33 +27,33 @@ export interface PriceSummary {
   pctChange?: number;
 }
 
-const SUBSCRIBED_SYMBOLS = Array.from(
-  new Set([FOCUS_SYMBOL, ...WATCHLIST_ITEMS.map((item) => item.symbol)])
-) as string[];
-
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export default function useDashboardData() {
+  const {
+    focusSymbol,
+    subscribedSymbols,
+    setFocusSymbol,
+  } = useDashboardContext();
+
   const {
     streamEvents: rawStreamEvents,
     lastTickForFocus,
     historyForFocus,
     ticksBySymbol,
     tickHistoryBySymbol,
-  } = useMarketData(SUBSCRIBED_SYMBOLS, FOCUS_SYMBOL);
+  } = useMarketData();
 
-  const { analyticsForFocus } = useAnalyticsData(
-    SUBSCRIBED_SYMBOLS,
-    FOCUS_SYMBOL
-  );
+  const { analyticsForFocus } = useAnalyticsData();
 
   const [dailyBaselines, setDailyBaselines] = useState<
     Record<string, number>
   >({});
 
+  // Fetch baselines for all subscribed symbols
   useEffect(() => {
-    const symbolsParam = SUBSCRIBED_SYMBOLS.join(",");
+    const symbolsParam = subscribedSymbols.join(",");
     const url = `${API_BASE_URL}/api/baselines?symbols=${encodeURIComponent(
       symbolsParam
     )}`;
@@ -83,7 +83,7 @@ export default function useDashboardData() {
     return () => {
       cancelled = true;
     };
-  }, []); 
+  }, [subscribedSymbols]);
 
   const priceSeries: PricePoint[] = useMemo(
     () =>
@@ -164,9 +164,9 @@ export default function useDashboardData() {
     () =>
       rawStreamEvents.filter(
         (event) =>
-          event.symbol == null || event.symbol === FOCUS_SYMBOL
+          event.symbol == null || event.symbol === focusSymbol
       ),
-    [rawStreamEvents]
+    [rawStreamEvents, focusSymbol]
   );
 
   const watchlistItems: WatchlistItem[] = useMemo(
@@ -215,8 +215,9 @@ export default function useDashboardData() {
   );
 
   return {
-    focusSymbol: FOCUS_SYMBOL,
-    subscribedSymbols: SUBSCRIBED_SYMBOLS,
+    focusSymbol,
+    setFocusSymbol,
+    subscribedSymbols,
     metrics,
     streamEvents,
     priceSeries,

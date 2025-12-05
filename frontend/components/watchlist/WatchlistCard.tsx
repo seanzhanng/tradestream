@@ -1,11 +1,14 @@
 import type { WatchlistItem } from "@/lib/dashboardData";
 import WatchlistRow from "./WatchlistRow";
+import { useDashboardContext } from "@/context/DashboardContext";
 
 interface WatchlistCardProps {
   items: WatchlistItem[];
 }
 
 export default function WatchlistCard({ items }: WatchlistCardProps) {
+  const { focusSymbol, setFocusSymbol } = useDashboardContext();
+
   return (
     <div className="rounded-2xl border border-slate-700/80 bg-slate-950/80 p-4 shadow-[0_16px_40px_rgba(0,0,0,0.7)]">
       <div className="mb-2 flex items-center justify-between">
@@ -18,7 +21,16 @@ export default function WatchlistCard({ items }: WatchlistCardProps) {
       </div>
       <div className="space-y-3 text-xs">
         {items.map((item) => (
-          <WatchlistRow key={item.symbol} {...item} />
+          <WatchlistRow
+            key={item.symbol}
+            symbol={item.symbol}
+            name={item.name}
+            price={item.price}
+            change={item.change}
+            changeColor={item.changeColor}
+            isActive={item.symbol === focusSymbol}
+            onSelect={() => setFocusSymbol(item.symbol)}
+          />
         ))}
       </div>
     </div>

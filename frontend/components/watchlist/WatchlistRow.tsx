@@ -3,7 +3,16 @@ import type {
   WatchlistChangeColor,
 } from "@/lib/dashboardData";
 
-type WatchlistRowProps = WatchlistItem;
+interface WatchlistRowProps extends WatchlistItem {
+  isActive: boolean;
+  onSelect: () => void;
+}
+
+const colorMap: Record<WatchlistChangeColor, string> = {
+  emerald: "text-emerald-300",
+  sky: "text-sky-300",
+  rose: "text-rose-300",
+};
 
 export default function WatchlistRow({
   symbol,
@@ -11,15 +20,20 @@ export default function WatchlistRow({
   price,
   change,
   changeColor,
+  isActive,
+  onSelect,
 }: WatchlistRowProps) {
-  const colorMap: Record<WatchlistChangeColor, string> = {
-    emerald: "text-emerald-300",
-    sky: "text-sky-300",
-    rose: "text-rose-300",
-  };
-
   return (
-    <div className="rounded-xl bg-slate-900/60 px-3 py-2 border border-slate-800/80">
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`w-full rounded-xl px-3 py-2 border text-left text-xs transition
+        ${
+          isActive
+            ? "bg-slate-800 border-emerald-400/70"
+            : "bg-slate-900/60 border-slate-800/80 hover:bg-slate-800/70"
+        }`}
+    >
       <div className="flex items-center justify-between">
         <div>
           <div className="text-[11px] font-semibold text-slate-100">
@@ -34,6 +48,6 @@ export default function WatchlistRow({
           </div>
         </div>
       </div>
-    </div>
+    </button>
   );
 }

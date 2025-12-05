@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useDashboardContext } from "@/context/DashboardContext";
 
 export interface AnalyticsSnapshot {
   symbol: string;
@@ -16,10 +17,22 @@ interface AnalyticsState {
   analyticsBySymbol: Record<string, AnalyticsSnapshot>;
 }
 
+interface AnalyticsWsMessage {
+  avg_volume: number;
+  pct_change: number;
+  symbol: string;
+  timestamp: number;
+  volatility: number;
+  volume_spike: boolean;
+  vwap: number;
+}
+
 const WS_BASE_URL =
   process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000";
 
-export default function useAnalyticsData(symbols: string[], focusSymbol: string) {
+export default function useAnalyticsData() {
+  const { subscribedSymbols, focusSymbol } = useDashboardContext();
+
   const [state, setState] = useState<AnalyticsState>({
     analyticsBySymbol: {},
   });
@@ -27,11 +40,11 @@ export default function useAnalyticsData(symbols: string[], focusSymbol: string)
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const hasSymbols = symbols.length > 0;
-  const symbolsKey = symbols.join(",");
+  const hasSymbols = subscribedSymbols.length > 0;
+  const symbolsKey = subscribedSymbols.join(",");
 
   useEffect(() => {
-    if (!hasSymbols || !symbolsKey) return;
+    if (!hasSymbols || symbolsKey.length === 0) return;
 
     const wsUrl = `${WS_BASE_URL}/ws/analytics?symbols=${encodeURIComponent(
       symbolsKey
@@ -45,17 +58,9 @@ export default function useAnalyticsData(symbols: string[], focusSymbol: string)
         console.log("🧮 Connected to analytics WS:", wsUrl);
       };
 
-      ws.onmessage = (event) => {
+      ws.onmessage = (event: MessageEvent<string>) => {
         try {
-          const raw = JSON.parse(event.data) as {
-            avg_volume: number;
-            pct_change: number;
-            symbol: string;
-            timestamp: number;
-            volatility: number;
-            volume_spike: boolean;
-            vwap: number;
-          };
+          const raw = JSON.parse(event.data) as AnalyticsWsMessage;
 
           const snapshot: AnalyticsSnapshot = {
             symbol: raw.symbol,

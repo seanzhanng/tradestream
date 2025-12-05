@@ -1,5 +1,3 @@
-import { FOCUS_SYMBOL } from "@/lib/dashboardData";
-
 export default function TopBar() {
   return (
     <header className="flex items-center justify-between">
@@ -11,7 +9,7 @@ export default function TopBar() {
           </span>
         </div>
         <p className="mt-1 text-xs text-slate-400">
-          {FOCUS_SYMBOL} • Streaming ticks, analytics, and alerts.
+          Streaming ticks, analytics, and alerts.
         </p>
       </div>
 

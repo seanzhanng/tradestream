@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useDashboardContext } from "@/context/DashboardContext";
 import type { StreamEvent } from "@/lib/dashboardData";
 import { MAX_STREAM_EVENTS, MAX_TICK_HISTORY } from "@/lib/dashboardData";
 
@@ -25,11 +26,20 @@ interface RedisTickResponse {
   timestamp?: number;
 }
 
+interface IncomingTickMessage {
+  symbol: string;
+  price: number;
+  volume: number;
+  timestamp: number;
+}
+
 const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000";
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-export default function useMarketData(symbols: string[], focusSymbol: string) {
+export default function useMarketData() {
+  const { subscribedSymbols, focusSymbol } = useDashboardContext();
+
   const [state, setState] = useState<MarketDataState>({
     ticksBySymbol: {},
     tickHistoryBySymbol: {},
@@ -37,12 +47,11 @@ export default function useMarketData(symbols: string[], focusSymbol: string) {
   });
 
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const hasSymbols = symbols.length > 0;
-  const symbolsKey = symbols.join(",");
+  const hasSymbols = subscribedSymbols.length > 0;
+  const symbolsKey = subscribedSymbols.join(",");
 
-  // 🔥 STEP 1 — Fetch initial tick history from Redis for ALL symbols
+  // STEP 1 — Fetch initial tick history from Redis for all subscribed symbols
   useEffect(() => {
     if (!hasSymbols) return;
 
@@ -53,7 +62,7 @@ export default function useMarketData(symbols: string[], focusSymbol: string) {
         const historyBySymbol: Record<string, TickEvent[]> = {};
 
         await Promise.all(
-          symbols.map(async (symbol) => {
+          subscribedSymbols.map(async (symbol) => {
             const url = `${API_BASE_URL}/api/ticks?symbol=${encodeURIComponent(
               symbol
             )}&lookback_hours=24`;
@@ -67,18 +76,20 @@ export default function useMarketData(symbols: string[], focusSymbol: string) {
                 return;
               }
 
-              const raw: RedisTickResponse[] = await res.json();
+              const raw = (await res.json()) as RedisTickResponse[];
 
               const mapped: TickEvent[] = raw
                 .map((t) => {
                   const tsMs =
                     typeof t.timestamp_ms === "number"
                       ? t.timestamp_ms
-                      : t.timestamp != null
+                      : typeof t.timestamp === "number"
                       ? t.timestamp * 1000
                       : null;
 
-                  if (tsMs == null) return null;
+                  if (tsMs === null) {
+                    return null;
+                  }
 
                   return {
                     symbol: t.symbol ?? symbol,
@@ -118,9 +129,9 @@ export default function useMarketData(symbols: string[], focusSymbol: string) {
     return () => {
       cancelled = true;
     };
-  }, [symbols, symbolsKey, hasSymbols]);
+  }, [symbolsKey, hasSymbols, subscribedSymbols]);
 
-  // 🔥 STEP 2 — Live WebSocket streaming
+  // STEP 2 — Live WebSocket streaming
   useEffect(() => {
     if (!hasSymbols) return;
 
@@ -128,89 +139,78 @@ export default function useMarketData(symbols: string[], focusSymbol: string) {
       symbolsKey
     )}`;
 
-    function connect() {
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
 
-      ws.onopen = () => {
-        console.log("🟢 Ticks WS connected:", wsUrl);
-      };
+    ws.onopen = () => {
+      console.log("🟢 Ticks WS connected:", wsUrl);
+    };
 
-      ws.onmessage = (event) => {
-        try {
-          const raw = JSON.parse(event.data) as {
-            symbol: string;
-            price: number;
-            volume: number;
-            timestamp: number; // seconds
+    ws.onmessage = (event: MessageEvent<string>) => {
+      try {
+        const raw = JSON.parse(event.data) as IncomingTickMessage;
+
+        const tick: TickEvent = {
+          symbol: raw.symbol,
+          price: raw.price,
+          volume: raw.volume,
+          timestamp: raw.timestamp,
+        };
+
+        setState((prev) => {
+          const nextTicks = {
+            ...prev.ticksBySymbol,
+            [tick.symbol]: tick,
           };
 
-          const tick: TickEvent = {
-            symbol: raw.symbol,
-            price: raw.price,
-            volume: raw.volume,
-            timestamp: raw.timestamp,
+          const prevHistory = prev.tickHistoryBySymbol[tick.symbol] ?? [];
+          const nextHistory = [...prevHistory, tick].slice(-MAX_TICK_HISTORY);
+
+          const nextHistoryBySymbol = {
+            ...prev.tickHistoryBySymbol,
+            [tick.symbol]: nextHistory,
           };
 
-          setState((prev) => {
-            const nextTicks = {
-              ...prev.ticksBySymbol,
-              [tick.symbol]: tick,
-            };
+          const timeStr = new Date(
+            tick.timestamp * 1000
+          ).toLocaleTimeString();
 
-            const prevHistory = prev.tickHistoryBySymbol[tick.symbol] ?? [];
-            const nextHistory = [...prevHistory, tick].slice(-MAX_TICK_HISTORY);
+          const newEvent: StreamEvent = {
+            id: `${tick.symbol}-${tick.timestamp}-${Math.random()
+              .toString(36)
+              .slice(2, 8)}`,
+            type: "tick",
+            text: `[${timeStr}] ${tick.symbol} • $${tick.price.toFixed(
+              2
+            )} @ ${tick.volume}`,
+            symbol: tick.symbol,
+          };
 
-            const nextHistoryBySymbol = {
-              ...prev.tickHistoryBySymbol,
-              [tick.symbol]: nextHistory,
-            };
+          return {
+            ticksBySymbol: nextTicks,
+            tickHistoryBySymbol: nextHistoryBySymbol,
+            streamEvents: [
+              newEvent,
+              ...prev.streamEvents,
+            ].slice(0, MAX_STREAM_EVENTS),
+          };
+        });
+      } catch (err) {
+        console.error("[useMarketData] WS parse error:", err);
+      }
+    };
 
-            const timeStr = new Date(
-              tick.timestamp * 1000
-            ).toLocaleTimeString();
+    ws.onerror = (err) => {
+      console.error("[useMarketData] WS error:", err);
+      ws.close();
+    };
 
-            const newEvent: StreamEvent = {
-              id: `${tick.symbol}-${tick.timestamp}-${Math.random()
-                .toString(36)
-                .slice(2, 8)}`,
-              type: "tick",
-              text: `[${timeStr}] ${tick.symbol} • $${tick.price.toFixed(
-                2
-              )} @ ${tick.volume}`,
-              symbol: tick.symbol,
-            };
-
-            return {
-              ticksBySymbol: nextTicks,
-              tickHistoryBySymbol: nextHistoryBySymbol,
-              streamEvents: [
-                newEvent,
-                ...prev.streamEvents,
-              ].slice(0, MAX_STREAM_EVENTS),
-            };
-          });
-        } catch (err) {
-          console.error("[useMarketData] WS parse error:", err);
-        }
-      };
-
-      ws.onerror = (err) => {
-        console.error("[useMarketData] WS error:", err);
-        ws.close();
-      };
-
-      ws.onclose = () => {
-        console.log("🔴 Ticks WS closed, retrying in 1500ms…");
-        reconnectRef.current = setTimeout(connect, 1500);
-      };
-    }
-
-    connect();
+    ws.onclose = () => {
+      console.log("🔴 Ticks WS closed");
+    };
 
     return () => {
-      if (reconnectRef.current) clearTimeout(reconnectRef.current);
-      wsRef.current?.close();
+      ws.close();
     };
   }, [symbolsKey, hasSymbols]);
 
