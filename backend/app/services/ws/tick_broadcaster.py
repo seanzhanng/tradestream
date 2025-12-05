@@ -1,6 +1,8 @@
 import asyncio
 from aiokafka import AIOKafkaConsumer
 import json
+from app.services.http.ticks_redis_service import add_tick_to_redis
+
 
 KAFKA_BROKER = "kafka:9092"
 TOPIC = "market_ticks"
@@ -28,6 +30,7 @@ async def tick_kafka_consumer():
         async for msg in consumer:
             tick = msg.value
             symbol = tick["symbol"]
+            await add_tick_to_redis(tick)
 
             dead = []
 

@@ -11,12 +11,14 @@ from app.services.ws.analytics_broadcaster import analytics_kafka_consumer
 from app.services.ws.tick_broadcaster import tick_kafka_consumer
 from app.services.analytics_consumer import consume_analytics
 
-from app.api.routes_users import router as users_router
-from app.api.routes_watchlist import router as watchlist_router
-from app.api.routes_health import router as health_router
-from app.api.routes_analytics_ws import router as analytics_router
-from app.api.routes_ticks_ws import router as ticks_router
-from app.api.routes_baselines import router as baselines_router
+from app.api.http.routes_users import router as users_router_http
+from app.api.http.routes_watchlist import router as watchlist_router_http
+from app.api.http.routes_health import router as health_router_http
+from app.api.http.routes_baselines import router as baselines_router_http
+from app.api.http.routes_ticks_redis import router as ticks_router_redis_http
+
+from app.api.ws.routes_analytics_ws import router as analytics_router_ws
+from app.api.ws.routes_ticks_ws import router as ticks_router_ws
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -50,9 +52,11 @@ async def health_check():
     logger.info("Health check OK")
     return {"status": "ok"}
 
-app.include_router(users_router, prefix="/api")
-app.include_router(watchlist_router, prefix="/api")
-app.include_router(analytics_router)
-app.include_router(ticks_router)
-app.include_router(health_router, prefix="/api")
-app.include_router(baselines_router, prefix="/api")
+app.include_router(users_router_http, prefix="/api")
+app.include_router(watchlist_router_http, prefix="/api")
+app.include_router(health_router_http, prefix="/api")
+app.include_router(baselines_router_http, prefix="/api")
+app.include_router(ticks_router_redis_http, prefix="/api")
+
+app.include_router(analytics_router_ws)
+app.include_router(ticks_router_ws)

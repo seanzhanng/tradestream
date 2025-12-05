@@ -7,3 +7,4 @@ pydantic-settings
 email-validator
 greenlet
 aiokafka
+redis>=5.0.0
