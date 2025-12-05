@@ -8,7 +8,7 @@ export interface TickEvent {
   symbol: string;
   price: number;
   volume: number;
-  timestamp: number;
+  timestamp: number; // seconds since epoch
 }
 
 interface MarketDataState {
@@ -17,7 +17,17 @@ interface MarketDataState {
   streamEvents: StreamEvent[];
 }
 
+interface RedisTickResponse {
+  symbol?: string;
+  price: number;
+  volume: number;
+  timestamp_ms?: number;
+  timestamp?: number;
+}
+
 const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export default function useMarketData(symbols: string[], focusSymbol: string) {
   const [state, setState] = useState<MarketDataState>({
@@ -32,8 +42,87 @@ export default function useMarketData(symbols: string[], focusSymbol: string) {
   const hasSymbols = symbols.length > 0;
   const symbolsKey = symbols.join(",");
 
+  // 🔥 STEP 1 — Fetch initial tick history from Redis for ALL symbols
   useEffect(() => {
-    if (!hasSymbols || !symbolsKey) return;
+    if (!hasSymbols) return;
+
+    let cancelled = false;
+
+    async function loadHistory() {
+      try {
+        const historyBySymbol: Record<string, TickEvent[]> = {};
+
+        await Promise.all(
+          symbols.map(async (symbol) => {
+            const url = `${API_BASE_URL}/api/ticks?symbol=${encodeURIComponent(
+              symbol
+            )}&lookback_hours=24`;
+
+            try {
+              const res = await fetch(url);
+              if (!res.ok) {
+                console.warn(
+                  `[useMarketData] history fetch failed for ${symbol}: ${res.status}`
+                );
+                return;
+              }
+
+              const raw: RedisTickResponse[] = await res.json();
+
+              const mapped: TickEvent[] = raw
+                .map((t) => {
+                  const tsMs =
+                    typeof t.timestamp_ms === "number"
+                      ? t.timestamp_ms
+                      : t.timestamp != null
+                      ? t.timestamp * 1000
+                      : null;
+
+                  if (tsMs == null) return null;
+
+                  return {
+                    symbol: t.symbol ?? symbol,
+                    price: t.price,
+                    volume: t.volume,
+                    timestamp: tsMs / 1000,
+                  };
+                })
+                .filter((t): t is TickEvent => t !== null);
+
+              historyBySymbol[symbol] = mapped.slice(-MAX_TICK_HISTORY);
+            } catch (err) {
+              console.error(
+                `[useMarketData] error fetching history for ${symbol}:`,
+                err
+              );
+            }
+          })
+        );
+
+        if (cancelled) return;
+
+        setState((prev) => ({
+          ...prev,
+          tickHistoryBySymbol: {
+            ...prev.tickHistoryBySymbol,
+            ...historyBySymbol,
+          },
+        }));
+      } catch (err) {
+        console.error("[useMarketData] error loading Redis history:", err);
+      }
+    }
+
+    loadHistory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [symbols, symbolsKey, hasSymbols]);
+
+  // 🔥 STEP 2 — Live WebSocket streaming
+  useEffect(() => {
+    if (!hasSymbols) return;
 
     const wsUrl = `${WS_BASE_URL}/ws/ticks?symbols=${encodeURIComponent(
       symbolsKey
@@ -44,7 +133,7 @@ export default function useMarketData(symbols: string[], focusSymbol: string) {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log("🟢 Connected to", wsUrl);
+        console.log("🟢 Ticks WS connected:", wsUrl);
       };
 
       ws.onmessage = (event) => {
@@ -53,32 +142,28 @@ export default function useMarketData(symbols: string[], focusSymbol: string) {
             symbol: string;
             price: number;
             volume: number;
-            timestamp: number;
+            timestamp: number; // seconds
+          };
+
+          const tick: TickEvent = {
+            symbol: raw.symbol,
+            price: raw.price,
+            volume: raw.volume,
+            timestamp: raw.timestamp,
           };
 
           setState((prev) => {
-            const tick: TickEvent = {
-              symbol: raw.symbol,
-              price: raw.price,
-              volume: raw.volume,
-              timestamp: raw.timestamp,
-            };
-
             const nextTicks = {
               ...prev.ticksBySymbol,
               [tick.symbol]: tick,
             };
 
-            const prevHistoryForSymbol =
-              prev.tickHistoryBySymbol[tick.symbol] ?? [];
-            const nextHistoryForSymbol = [
-              ...prevHistoryForSymbol,
-              tick,
-            ].slice(-MAX_TICK_HISTORY);
+            const prevHistory = prev.tickHistoryBySymbol[tick.symbol] ?? [];
+            const nextHistory = [...prevHistory, tick].slice(-MAX_TICK_HISTORY);
 
             const nextHistoryBySymbol = {
               ...prev.tickHistoryBySymbol,
-              [tick.symbol]: nextHistoryForSymbol,
+              [tick.symbol]: nextHistory,
             };
 
             const timeStr = new Date(
@@ -86,7 +171,7 @@ export default function useMarketData(symbols: string[], focusSymbol: string) {
             ).toLocaleTimeString();
 
             const newEvent: StreamEvent = {
-              id: `${raw.symbol}-${raw.timestamp}-${Math.random()
+              id: `${tick.symbol}-${tick.timestamp}-${Math.random()
                 .toString(36)
                 .slice(2, 8)}`,
               type: "tick",
@@ -106,18 +191,18 @@ export default function useMarketData(symbols: string[], focusSymbol: string) {
             };
           });
         } catch (err) {
-          console.error("WS parse error:", err);
+          console.error("[useMarketData] WS parse error:", err);
         }
       };
 
-      ws.onclose = () => {
-        console.log("🔴 WS closed, retrying in 1500ms…");
-        reconnectRef.current = setTimeout(connect, 1500);
+      ws.onerror = (err) => {
+        console.error("[useMarketData] WS error:", err);
+        ws.close();
       };
 
-      ws.onerror = (err) => {
-        console.error("⚠️ WS error:", err);
-        ws.close();
+      ws.onclose = () => {
+        console.log("🔴 Ticks WS closed, retrying in 1500ms…");
+        reconnectRef.current = setTimeout(connect, 1500);
       };
     }
 
@@ -127,7 +212,7 @@ export default function useMarketData(symbols: string[], focusSymbol: string) {
       if (reconnectRef.current) clearTimeout(reconnectRef.current);
       wsRef.current?.close();
     };
-  }, [hasSymbols, symbolsKey]);
+  }, [symbolsKey, hasSymbols]);
 
   const lastTickForFocus = state.ticksBySymbol[focusSymbol];
   const historyForFocus = state.tickHistoryBySymbol[focusSymbol] ?? [];
