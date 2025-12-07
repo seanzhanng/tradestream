@@ -31,7 +31,6 @@ export default function DashboardPage() {
         <TopBar />
 
         <section className="mt-5 flex flex-1 gap-5 overflow-hidden">
-          {/* Left column */}
           <div className="flex flex-1 flex-col gap-4 overflow-hidden">
             <ChartCard
               symbol={focusSymbol}
@@ -48,7 +47,6 @@ export default function DashboardPage() {
             <StreamPanel events={streamEvents} />
           </div>
 
-          {/* Right column: watchlist + alerts */}
           <div className="hidden w-80 flex-col gap-4 lg:flex xl:w-96">
             <WatchlistCard items={watchlistItems} />
             <AlertsCard alerts={ALERT_ITEMS} />

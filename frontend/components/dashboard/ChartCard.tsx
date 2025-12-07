@@ -57,7 +57,6 @@ export default function ChartCard({
 
   return (
     <div className="relative flex h-72 flex-col overflow-hidden rounded-2xl border border-slate-700/70 bg-slate-950/70 shadow-[0_18px_45px_rgba(0,0,0,0.6)]">
-      {/* Header */}
       <div className="border-b border-slate-800/80 bg-linear-to-r from-emerald-500/10 via-sky-500/10 to-fuchsia-500/10 px-4 py-2.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-slate-200">
@@ -79,7 +78,6 @@ export default function ChartCard({
         </div>
       </div>
 
-      {/* Chart body */}
       <div className="flex flex-1 items-center justify-center text-[12px] text-slate-500 px-2 pb-2 pt-1">
         {hasData ? (
           <ResponsiveContainer width="100%" height="100%">

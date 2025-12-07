@@ -35,6 +35,7 @@ export default function useDashboardData() {
     focusSymbol,
     subscribedSymbols,
     setFocusSymbol,
+    windowMinutes,
   } = useDashboardContext();
 
   const {
@@ -51,7 +52,6 @@ export default function useDashboardData() {
     Record<string, number>
   >({});
 
-  // Fetch baselines for all subscribed symbols
   useEffect(() => {
     const symbolsParam = subscribedSymbols.join(",");
     const url = `${API_BASE_URL}/api/baselines?symbols=${encodeURIComponent(
@@ -85,14 +85,22 @@ export default function useDashboardData() {
     };
   }, [subscribedSymbols]);
 
-  const priceSeries: PricePoint[] = useMemo(
-    () =>
-      (historyForFocus as TickEvent[]).map((tick) => ({
-        timestamp: tick.timestamp,
-        price: tick.price,
-      })),
-    [historyForFocus]
-  );
+  const priceSeries: PricePoint[] = useMemo(() => {
+    const history = historyForFocus as TickEvent[];
+    if (history.length === 0) {
+      return [];
+    }
+
+    const nowSeconds = Date.now() / 1000;
+    const cutoff = nowSeconds - windowMinutes * 60;
+
+    const filtered = history.filter((tick) => tick.timestamp >= cutoff);
+
+    return filtered.map((tick) => ({
+      timestamp: tick.timestamp,
+      price: tick.price,
+    }));
+  }, [historyForFocus, windowMinutes]);
 
   const priceSummary: PriceSummary = useMemo(() => {
     if (priceSeries.length === 0) {

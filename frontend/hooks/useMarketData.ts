@@ -9,7 +9,7 @@ export interface TickEvent {
   symbol: string;
   price: number;
   volume: number;
-  timestamp: number; // seconds since epoch
+  timestamp: number;
 }
 
 interface MarketDataState {
@@ -51,7 +51,6 @@ export default function useMarketData() {
   const hasSymbols = subscribedSymbols.length > 0;
   const symbolsKey = subscribedSymbols.join(",");
 
-  // STEP 1 — Fetch initial tick history from Redis for all subscribed symbols
   useEffect(() => {
     if (!hasSymbols) return;
 
@@ -131,7 +130,6 @@ export default function useMarketData() {
     };
   }, [symbolsKey, hasSymbols, subscribedSymbols]);
 
-  // STEP 2 — Live WebSocket streaming
   useEffect(() => {
     if (!hasSymbols) return;
 

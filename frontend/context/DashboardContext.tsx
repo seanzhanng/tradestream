@@ -7,14 +7,16 @@ export interface DashboardContextValue {
   focusSymbol: string;
   subscribedSymbols: string[];
   setFocusSymbol: (symbol: string) => void;
+  windowMinutes: number;
+  setWindowMinutes: (minutes: number) => void;
 }
 
 const DashboardContext = createContext<DashboardContextValue | null>(null);
 
 export function DashboardProvider({ children }: { children: ReactNode }) {
   const [focusSymbol, setFocusSymbol] = useState<string>(FOCUS_SYMBOL);
+  const [windowMinutes, setWindowMinutes] = useState<number>(1);
 
-  // All symbols we care about (static): focus default + watchlist
   const subscribedSymbols = useMemo(
     () =>
       Array.from(
@@ -28,8 +30,10 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       focusSymbol,
       subscribedSymbols,
       setFocusSymbol,
+      windowMinutes,
+      setWindowMinutes,
     }),
-    [focusSymbol, subscribedSymbols]
+    [focusSymbol, subscribedSymbols, windowMinutes]
   );
 
   return (
