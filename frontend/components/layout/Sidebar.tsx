@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { DASHBOARD_NAV_ITEMS } from "@/lib/dashboardData";
 import useSystemHealth from "@/hooks/useSystemHealth";
 
@@ -10,6 +11,17 @@ interface SidebarProps {
 export default function Sidebar({ activeItem = "Dashboard" }: SidebarProps) {
   const { kafka } = useSystemHealth();
   const kafkaOnline = kafka === "online";
+  const router = useRouter();
+
+  const handleNavClick = (item: string) => {
+    if (item === "Dashboard") {
+      router.push("/dashboard");
+    } else if (item === "Watchlist") {
+      router.push("/watchlist");
+    } else if (item === "Settings") {
+      router.push("/settings");
+    }
+  };
 
   return (
     <aside className="flex h-full min-h-screen w-64 flex-col border-r border-slate-800/80 bg-slate-950/70 px-5 py-6 backdrop-blur-xl">
@@ -34,6 +46,7 @@ export default function Sidebar({ activeItem = "Dashboard" }: SidebarProps) {
             <button
               key={item}
               type="button"
+              onClick={() => handleNavClick(item)}
               className={
                 isActive
                   ? "flex items-center justify-between rounded-xl border border-emerald-400/50 bg-linear-to-r from-emerald-500/25 via-sky-500/15 to-transparent px-3 py-2 text-[13px] font-medium text-slate-50 shadow-[0_0_25px_rgba(16,185,129,0.45)]"

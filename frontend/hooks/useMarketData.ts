@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useDashboardContext } from "@/context/DashboardContext";
 import type { StreamEvent } from "@/lib/dashboardData";
 import { MAX_STREAM_EVENTS, MAX_TICK_HISTORY } from "@/lib/dashboardData";
+import { useDashboardContext } from "@/context/DashboardContext";
 
 export interface TickEvent {
   symbol: string;
@@ -26,13 +26,6 @@ interface RedisTickResponse {
   timestamp?: number;
 }
 
-interface IncomingTickMessage {
-  symbol: string;
-  price: number;
-  volume: number;
-  timestamp: number;
-}
-
 const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000";
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -47,12 +40,15 @@ export default function useMarketData() {
   });
 
   const wsRef = useRef<WebSocket | null>(null);
+  const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hasSymbols = subscribedSymbols.length > 0;
   const symbolsKey = subscribedSymbols.join(",");
 
   useEffect(() => {
-    if (!hasSymbols) return;
+    if (!hasSymbols) {
+      return;
+    }
 
     let cancelled = false;
 
@@ -75,29 +71,29 @@ export default function useMarketData() {
                 return;
               }
 
-              const raw = (await res.json()) as RedisTickResponse[];
+              const raw: RedisTickResponse[] = await res.json();
 
               const mapped: TickEvent[] = raw
-                .map((t) => {
+                .map((tick) => {
                   const tsMs =
-                    typeof t.timestamp_ms === "number"
-                      ? t.timestamp_ms
-                      : typeof t.timestamp === "number"
-                      ? t.timestamp * 1000
+                    typeof tick.timestamp_ms === "number"
+                      ? tick.timestamp_ms
+                      : tick.timestamp != null
+                      ? tick.timestamp * 1000
                       : null;
 
-                  if (tsMs === null) {
+                  if (tsMs == null) {
                     return null;
                   }
 
                   return {
-                    symbol: t.symbol ?? symbol,
-                    price: t.price,
-                    volume: t.volume,
+                    symbol: tick.symbol ?? symbol,
+                    price: tick.price,
+                    volume: tick.volume,
                     timestamp: tsMs / 1000,
                   };
                 })
-                .filter((t): t is TickEvent => t !== null);
+                .filter((tick): tick is TickEvent => tick !== null);
 
               historyBySymbol[symbol] = mapped.slice(-MAX_TICK_HISTORY);
             } catch (err) {
@@ -109,7 +105,9 @@ export default function useMarketData() {
           })
         );
 
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
 
         setState((prev) => ({
           ...prev,
@@ -128,89 +126,132 @@ export default function useMarketData() {
     return () => {
       cancelled = true;
     };
-  }, [symbolsKey, hasSymbols, subscribedSymbols]);
+  }, [hasSymbols, symbolsKey, subscribedSymbols]);
 
   useEffect(() => {
-    if (!hasSymbols) return;
+    if (!hasSymbols) {
+      return;
+    }
+
+    let isActive = true;
 
     const wsUrl = `${WS_BASE_URL}/ws/ticks?symbols=${encodeURIComponent(
       symbolsKey
     )}`;
 
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      console.log("🟢 Ticks WS connected:", wsUrl);
-    };
-
-    ws.onmessage = (event: MessageEvent<string>) => {
-      try {
-        const raw = JSON.parse(event.data) as IncomingTickMessage;
-
-        const tick: TickEvent = {
-          symbol: raw.symbol,
-          price: raw.price,
-          volume: raw.volume,
-          timestamp: raw.timestamp,
-        };
-
-        setState((prev) => {
-          const nextTicks = {
-            ...prev.ticksBySymbol,
-            [tick.symbol]: tick,
-          };
-
-          const prevHistory = prev.tickHistoryBySymbol[tick.symbol] ?? [];
-          const nextHistory = [...prevHistory, tick].slice(-MAX_TICK_HISTORY);
-
-          const nextHistoryBySymbol = {
-            ...prev.tickHistoryBySymbol,
-            [tick.symbol]: nextHistory,
-          };
-
-          const timeStr = new Date(
-            tick.timestamp * 1000
-          ).toLocaleTimeString();
-
-          const newEvent: StreamEvent = {
-            id: `${tick.symbol}-${tick.timestamp}-${Math.random()
-              .toString(36)
-              .slice(2, 8)}`,
-            type: "tick",
-            text: `[${timeStr}] ${tick.symbol} • $${tick.price.toFixed(
-              2
-            )} @ ${tick.volume}`,
-            symbol: tick.symbol,
-          };
-
-          return {
-            ticksBySymbol: nextTicks,
-            tickHistoryBySymbol: nextHistoryBySymbol,
-            streamEvents: [
-              newEvent,
-              ...prev.streamEvents,
-            ].slice(0, MAX_STREAM_EVENTS),
-          };
-        });
-      } catch (err) {
-        console.error("[useMarketData] WS parse error:", err);
+    function connect() {
+      if (!isActive) {
+        return;
       }
-    };
 
-    ws.onerror = (err) => {
-      console.error("[useMarketData] WS error:", err);
-      ws.close();
-    };
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
-    ws.onclose = () => {
-      console.log("🔴 Ticks WS closed");
-    };
+      ws.onopen = () => {
+        if (!isActive) {
+          return;
+        }
+        console.log("🟢 Ticks WS connected:", wsUrl);
+      };
+
+      ws.onmessage = (event: MessageEvent<string>) => {
+        if (!isActive) {
+          return;
+        }
+
+        try {
+          const raw = JSON.parse(event.data) as {
+            symbol: string;
+            price: number;
+            volume: number;
+            timestamp: number;
+          };
+
+          const tick: TickEvent = {
+            symbol: raw.symbol,
+            price: raw.price,
+            volume: raw.volume,
+            timestamp: raw.timestamp,
+          };
+
+          setState((prev) => {
+            const nextTicks = {
+              ...prev.ticksBySymbol,
+              [tick.symbol]: tick,
+            };
+
+            const prevHistory =
+              prev.tickHistoryBySymbol[tick.symbol] ?? [];
+            const nextHistory = [...prevHistory, tick].slice(
+              -MAX_TICK_HISTORY
+            );
+
+            const nextHistoryBySymbol = {
+              ...prev.tickHistoryBySymbol,
+              [tick.symbol]: nextHistory,
+            };
+
+            const timeStr = new Date(
+              tick.timestamp * 1000
+            ).toLocaleTimeString();
+
+            const newEvent: StreamEvent = {
+              id: `${tick.symbol}-${tick.timestamp}-${Math.random()
+                .toString(36)
+                .slice(2, 8)}`,
+              type: "tick",
+              text: `[${timeStr}] ${tick.symbol} • $${tick.price.toFixed(
+                2
+              )} @ ${tick.volume}`,
+              symbol: tick.symbol,
+            };
+
+            return {
+              ticksBySymbol: nextTicks,
+              tickHistoryBySymbol: nextHistoryBySymbol,
+              streamEvents: [
+                newEvent,
+                ...prev.streamEvents,
+              ].slice(0, MAX_STREAM_EVENTS),
+            };
+          });
+        } catch (err) {
+          console.error("[useMarketData] WS parse error:", err);
+        }
+      };
+
+      ws.onerror = (event: Event) => {
+        if (!isActive) {
+          return;
+        }
+        console.error("[useMarketData] WS error:", event);
+      };
+
+      ws.onclose = () => {
+        if (!isActive) {
+          return;
+        }
+        console.log("🔴 Ticks WS closed, retrying in 1500ms…");
+        reconnectRef.current = setTimeout(connect, 1500);
+      };
+    }
+
+    connect();
 
     return () => {
-      ws.close();
+      isActive = false;
+
+      if (reconnectRef.current !== null) {
+        clearTimeout(reconnectRef.current);
+        reconnectRef.current = null;
+      }
+
+      if (wsRef.current !== null) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
     };
-  }, [symbolsKey, hasSymbols]);
+  }, [hasSymbols, symbolsKey]);
 
   const lastTickForFocus = state.ticksBySymbol[focusSymbol];
   const historyForFocus = state.tickHistoryBySymbol[focusSymbol] ?? [];

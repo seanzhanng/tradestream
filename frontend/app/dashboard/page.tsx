@@ -10,7 +10,6 @@ import WatchlistCard from "@/components/watchlist/WatchlistCard";
 import AlertsCard from "@/components/alerts/AlertsCard";
 import { ALERT_ITEMS } from "@/lib/dashboardData";
 import useDashboardData from "@/hooks/useDashboardData";
-import { DashboardProvider } from "@/context/DashboardContext";
 
 function DashboardPageInner() {
   const {
@@ -59,9 +58,5 @@ function DashboardPageInner() {
 }
 
 export default function DashboardPage() {
-  return (
-    <DashboardProvider>
-      <DashboardPageInner />
-    </DashboardProvider>
-  );
+  return <DashboardPageInner />;
 }

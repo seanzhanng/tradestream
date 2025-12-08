@@ -17,16 +17,6 @@ interface AnalyticsState {
   analyticsBySymbol: Record<string, AnalyticsSnapshot>;
 }
 
-interface AnalyticsWsMessage {
-  avg_volume: number;
-  pct_change: number;
-  symbol: string;
-  timestamp: number;
-  volatility: number;
-  volume_spike: boolean;
-  vwap: number;
-}
-
 const WS_BASE_URL =
   process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000";
 
@@ -44,23 +34,46 @@ export default function useAnalyticsData() {
   const symbolsKey = subscribedSymbols.join(",");
 
   useEffect(() => {
-    if (!hasSymbols || symbolsKey.length === 0) return;
+    if (!hasSymbols) {
+      return;
+    }
+
+    let isActive = true;
 
     const wsUrl = `${WS_BASE_URL}/ws/analytics?symbols=${encodeURIComponent(
       symbolsKey
     )}`;
 
     function connect() {
+      if (!isActive) {
+        return;
+      }
+
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log("🧮 Connected to analytics WS:", wsUrl);
+        if (!isActive) {
+          return;
+        }
+        console.log("🧮 Analytics WS connected:", wsUrl);
       };
 
       ws.onmessage = (event: MessageEvent<string>) => {
+        if (!isActive) {
+          return;
+        }
+
         try {
-          const raw = JSON.parse(event.data) as AnalyticsWsMessage;
+          const raw = JSON.parse(event.data) as {
+            avg_volume: number;
+            pct_change: number;
+            symbol: string;
+            timestamp: number;
+            volatility: number;
+            volume_spike: boolean;
+            vwap: number;
+          };
 
           const snapshot: AnalyticsSnapshot = {
             symbol: raw.symbol,
@@ -83,22 +96,36 @@ export default function useAnalyticsData() {
         }
       };
 
-      ws.onclose = () => {
-        console.log("🔴 Analytics WS closed, retrying in 1500ms…");
-        reconnectRef.current = setTimeout(connect, 1500);
+      ws.onerror = (event: Event) => {
+        if (!isActive) {
+          return;
+        }
+        console.error("⚠️ Analytics WS error:", event);
       };
 
-      ws.onerror = (err) => {
-        console.error("⚠️ Analytics WS error:", err);
-        ws.close();
+      ws.onclose = () => {
+        if (!isActive) {
+          return;
+        }
+        console.log("🔴 Analytics WS closed, retrying in 1500ms…");
+        reconnectRef.current = setTimeout(connect, 1500);
       };
     }
 
     connect();
 
     return () => {
-      if (reconnectRef.current) clearTimeout(reconnectRef.current);
-      wsRef.current?.close();
+      isActive = false;
+
+      if (reconnectRef.current !== null) {
+        clearTimeout(reconnectRef.current);
+        reconnectRef.current = null;
+      }
+
+      if (wsRef.current !== null) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
     };
   }, [hasSymbols, symbolsKey]);
 

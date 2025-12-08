@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  METRIC_DEFINITIONS,
-  WATCHLIST_ITEMS,
-} from "@/lib/dashboardData";
+import { METRIC_DEFINITIONS } from "@/lib/dashboardData";
 import type {
   WatchlistItem,
   WatchlistChangeColor,
@@ -36,6 +33,7 @@ export default function useDashboardData() {
     subscribedSymbols,
     setFocusSymbol,
     windowMinutes,
+    watchlist,
   } = useDashboardContext();
 
   const {
@@ -53,6 +51,11 @@ export default function useDashboardData() {
   >({});
 
   useEffect(() => {
+    if (subscribedSymbols.length === 0) {
+      setDailyBaselines({});
+      return;
+    }
+
     const symbolsParam = subscribedSymbols.join(",");
     const url = `${API_BASE_URL}/api/baselines?symbols=${encodeURIComponent(
       symbolsParam
@@ -179,7 +182,7 @@ export default function useDashboardData() {
 
   const watchlistItems: WatchlistItem[] = useMemo(
     () =>
-      WATCHLIST_ITEMS.map((item) => {
+      watchlist.map((item) => {
         const liveTick = ticksBySymbol[item.symbol];
 
         if (!liveTick) {
@@ -219,7 +222,7 @@ export default function useDashboardData() {
           changeColor,
         };
       }),
-    [ticksBySymbol, tickHistoryBySymbol, dailyBaselines]
+    [watchlist, ticksBySymbol, tickHistoryBySymbol, dailyBaselines]
   );
 
   return {

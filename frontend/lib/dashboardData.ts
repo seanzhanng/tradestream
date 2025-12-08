@@ -1,9 +1,6 @@
 export const DASHBOARD_NAV_ITEMS = [
   "Dashboard",
   "Watchlist",
-  "Live Data",
-  "Alerts",
-  "History",
   "Settings",
 ];
 
