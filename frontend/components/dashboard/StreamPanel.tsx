@@ -8,7 +8,6 @@ interface StreamPanelProps {
 const typeClassMap: Record<StreamEventType, string> = {
   tick: "text-slate-300",
   analytics: "text-emerald-300",
-  alert: "text-fuchsia-300",
 };
 
 export default function StreamPanel({ events }: StreamPanelProps) {

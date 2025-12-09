@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Tradestream Dashboard",
-  description: "Market Data Analytics & Alerts",
+  description: "Real time market data analytics platform",
 };
 
 export default function RootLayout({

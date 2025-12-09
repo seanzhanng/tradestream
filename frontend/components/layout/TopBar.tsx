@@ -21,7 +21,7 @@ export default function TopBar() {
           </span>
         </div>
         <p className="mt-1 text-xs text-slate-400">
-          Streaming ticks, analytics, and alerts.
+          Real time market data analytics platform
         </p>
       </div>
 

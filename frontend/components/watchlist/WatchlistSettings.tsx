@@ -1,10 +1,36 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useDashboardContext } from "@/context/DashboardContext";
-import type { WatchlistItem, WatchlistChangeColor } from "@/lib/dashboardData";
+import type {
+  WatchlistItem,
+  WatchlistChangeColor,
+} from "@/lib/dashboardData";
+import { getCurrentUserId } from "@/lib/currentUser";
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const DEFAULT_CHANGE_COLOR: WatchlistChangeColor = "sky";
+
+async function persistWatchlist(nextItems: WatchlistItem[]): Promise<void> {
+  const userId = getCurrentUserId();
+  const url = `${API_BASE_URL}/api/watchlist/${encodeURIComponent(userId)}`;
+
+  const symbols = nextItems.map((item) => item.symbol);
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ symbols }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`watchlist save failed: ${res.status}`);
+  }
+}
 
 export default function WatchlistSettings() {
   const { watchlist, setWatchlist } = useDashboardContext();
@@ -12,7 +38,7 @@ export default function WatchlistSettings() {
   const [symbolInput, setSymbolInput] = useState<string>("");
   const [nameInput, setNameInput] = useState<string>("");
 
-  const handleAdd = (event: FormEvent) => {
+  const handleAdd = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     const rawSymbol = symbolInput.trim().toUpperCase();
@@ -35,13 +61,32 @@ export default function WatchlistSettings() {
       changeColor: DEFAULT_CHANGE_COLOR,
     };
 
-    setWatchlist([...watchlist, newItem]);
+    const nextWatchlist = [...watchlist, newItem];
+
+    setWatchlist(nextWatchlist);
+
+    try {
+      await persistWatchlist(nextWatchlist);
+    } catch (err) {
+      console.error("[WatchlistSettings] error saving watchlist:", err);
+    }
+
     setSymbolInput("");
     setNameInput("");
   };
 
-  const handleRemove = (symbol: string) => {
-    setWatchlist(watchlist.filter((item) => item.symbol !== symbol));
+  const handleRemove = async (symbol: string) => {
+    const nextWatchlist = watchlist.filter(
+      (item) => item.symbol !== symbol
+    );
+
+    setWatchlist(nextWatchlist);
+
+    try {
+      await persistWatchlist(nextWatchlist);
+    } catch (err) {
+      console.error("[WatchlistSettings] error saving watchlist:", err);
+    }
   };
 
   return (
@@ -108,11 +153,15 @@ export default function WatchlistSettings() {
               <div className="text-[11px] font-semibold text-slate-100">
                 {item.symbol}
               </div>
-              <div className="text-[10px] text-slate-500">{item.name}</div>
+              <div className="text-[10px] text-slate-500">
+                {item.name}
+              </div>
             </div>
             <button
               type="button"
-              onClick={() => handleRemove(item.symbol)}
+              onClick={() => {
+                void handleRemove(item.symbol);
+              }}
               className="rounded-full border border-slate-700 px-2 py-0.5 text-[10px] text-slate-400 hover:border-rose-500 hover:text-rose-300"
             >
               Remove
