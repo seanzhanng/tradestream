@@ -1,9 +1,6 @@
-# app/services/http/baseline_service.py
 from typing import Dict, List
-
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-
 
 class BaselineService:
     @staticmethod
@@ -17,7 +14,6 @@ class BaselineService:
         result: Dict[str, float] = {}
 
         for sym in symbols:
-            # first tick of CURRENT_DATE for this symbol
             rows = await db.execute(
                 text(
                     """

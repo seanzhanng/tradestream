@@ -1,5 +1,3 @@
-# app/api/routes_ticks.py
-
 from fastapi import APIRouter, Query
 from app.services.http.ticks_redis_service import (
     get_ticks_from_redis,

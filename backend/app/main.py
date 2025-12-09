@@ -16,6 +16,7 @@ from app.api.http.routes_watchlist import router as watchlist_router_http
 from app.api.http.routes_health import router as health_router_http
 from app.api.http.routes_baselines import router as baselines_router_http
 from app.api.http.routes_ticks_redis import router as ticks_router_redis_http
+from app.api.http.routes_symbols import router as symbols_router_http
 
 from app.api.ws.routes_analytics_ws import router as analytics_router_ws
 from app.api.ws.routes_ticks_ws import router as ticks_router_ws
@@ -57,6 +58,7 @@ app.include_router(watchlist_router_http, prefix="/api")
 app.include_router(health_router_http, prefix="/api")
 app.include_router(baselines_router_http, prefix="/api")
 app.include_router(ticks_router_redis_http, prefix="/api")
+app.include_router(symbols_router_http, prefix="/api")
 
 app.include_router(analytics_router_ws)
 app.include_router(ticks_router_ws)

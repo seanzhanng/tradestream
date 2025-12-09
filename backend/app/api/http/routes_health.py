@@ -1,4 +1,3 @@
-# backend/app/api/routes_health.py
 from fastapi import APIRouter
 from app.services.http.health_service import HealthService
 

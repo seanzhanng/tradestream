@@ -1,7 +1,5 @@
 export const DASHBOARD_NAV_ITEMS = ["Dashboard", "Watchlist", "Settings"] as const;
 
-export const FOCUS_SYMBOL = "AAPL";
-
 export const MAX_STREAM_EVENTS = 500;
 export const MAX_TICK_HISTORY = 120;
 

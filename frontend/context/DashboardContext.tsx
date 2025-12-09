@@ -1,3 +1,4 @@
+// frontend/context/DashboardContext.tsx
 "use client";
 
 import {
@@ -8,11 +9,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { FOCUS_SYMBOL, type WatchlistItem } from "@/lib/dashboardData";
+import type { WatchlistItem } from "@/lib/dashboardData";
 import { getCurrentUserId } from "@/lib/currentUser";
 
 export interface DashboardContextValue {
-  focusSymbol: string;
+  focusSymbol: string;                // "" means "no focus selected"
   subscribedSymbols: string[];
   setFocusSymbol: (symbol: string) => void;
   windowMinutes: number;
@@ -32,19 +33,65 @@ interface WatchlistApiResponse {
   symbols: string[];
 }
 
-export function DashboardProvider({ children }: { children: ReactNode }) {
-  // This is your currently focused symbol on the chart.
-  // Starts as FOCUS_SYMBOL, but we’ll override it once backend watchlist loads.
-  const [focusSymbol, setFocusSymbol] = useState<string>(FOCUS_SYMBOL);
+interface SymbolSearchResult {
+  symbol: string;
+  name: string;
+}
 
-  // Chart window: 1min / 5min / 1h (already hooked up in TopBar).
+async function resolveNameForSymbol(symbol: string): Promise<string> {
+  const trimmed = symbol.trim().toUpperCase();
+  if (trimmed.length === 0) {
+    return symbol;
+  }
+
+  try {
+    const params = new URLSearchParams({
+      q: trimmed,
+      limit: "1",
+    });
+
+    const url = `${API_BASE_URL}/api/symbols/search?${params.toString()}`;
+    const res = await fetch(url);
+
+    if (!res.ok) {
+      console.warn(
+        "[DashboardContext] symbol lookup failed for",
+        symbol,
+        "status:",
+        res.status
+      );
+      return symbol;
+    }
+
+    const data = (await res.json()) as SymbolSearchResult[];
+
+    if (!Array.isArray(data) || data.length === 0) {
+      return symbol;
+    }
+
+    const exact =
+      data.find(
+        (entry) => entry.symbol.toUpperCase() === trimmed
+      ) ?? data[0];
+
+    return exact.name || symbol;
+  } catch (err) {
+    console.error("[DashboardContext] resolveNameForSymbol error:", err);
+    return symbol;
+  }
+}
+
+export function DashboardProvider({ children }: { children: ReactNode }) {
+  // 👉 "" means "no focus symbol yet"
+  const [focusSymbol, setFocusSymbol] = useState<string>("");
+
+  // Chart window: 1min / 5min / 1h
   const [windowMinutes, setWindowMinutes] = useState<number>(1);
 
-  // 💥 The only source of truth for watchlist now.
-  // Starts empty, then gets hydrated from the backend.
+  // Source of truth for the watchlist, hydrated from backend
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
 
-  // 🔁 Load watchlist from backend once on mount
+  // Load watchlist from backend once on mount
   useEffect(() => {
     let cancelled = false;
 
@@ -68,14 +115,18 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
         const data = (await res.json()) as WatchlistApiResponse;
 
-        // Map backend symbols → WatchlistItem objects
-        const nextWatchlist: WatchlistItem[] = data.symbols.map((symbol) => ({
-          symbol,
-          name: symbol, // you can swap to a metadata service later
-          price: "—",
-          change: "—",
-          changeColor: "sky",
-        }));
+        const nextWatchlist: WatchlistItem[] = await Promise.all(
+          data.symbols.map(async (symbol) => {
+            const name = await resolveNameForSymbol(symbol);
+            return {
+              symbol,
+              name,
+              price: "—",
+              change: "—",
+              changeColor: "sky",
+            };
+          })
+        );
 
         if (cancelled) {
           return;
@@ -83,7 +134,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
         setWatchlist(nextWatchlist);
 
-        // If backend returned symbols, set focus to the first one
+        // If backend returned symbols, set focus to the first;
+        // otherwise keep "" (no focus).
         if (nextWatchlist.length > 0) {
           setFocusSymbol(nextWatchlist[0].symbol);
         }
@@ -99,19 +151,18 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // ✅ Symbols we subscribe to for WS + Redis:
-  // - always include the current focusSymbol
-  // - plus everything in the watchlist
+  // Symbols we subscribe to:
+  // just the watchlist symbols (we drop "" automatically)
   const subscribedSymbols = useMemo(
     () =>
       Array.from(
         new Set(
-          [focusSymbol, ...watchlist.map((item) => item.symbol)].filter(
-            (symbol) => symbol.length > 0
-          )
+          watchlist
+            .map((item) => item.symbol)
+            .filter((symbol) => symbol.length > 0)
         )
       ),
-    [focusSymbol, watchlist]
+    [watchlist]
   );
 
   const value: DashboardContextValue = useMemo(
@@ -137,7 +188,9 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 export function useDashboardContext(): DashboardContextValue {
   const ctx = useContext(DashboardContext);
   if (ctx == null) {
-    throw new Error("useDashboardContext must be used within DashboardProvider");
+    throw new Error(
+      "useDashboardContext must be used within DashboardProvider"
+    );
   }
   return ctx;
 }

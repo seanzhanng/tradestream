@@ -1,4 +1,3 @@
-# backend/app/services/http/health_service.py
 from aiokafka import AIOKafkaProducer
 import asyncio
 

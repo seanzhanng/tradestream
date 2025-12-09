@@ -117,7 +117,7 @@ export default function ChartCard({
           </ResponsiveContainer>
         ) : (
           <div className="h-40 w-[90%] rounded-xl border border-dashed border-slate-700/80 bg-linear-to-tr from-slate-900 via-slate-900/60 to-slate-800/60 flex items-center justify-center">
-            Waiting for price data…
+            Add a symbol to your watchlist to see its price chart here.
           </div>
         )}
       </div>
