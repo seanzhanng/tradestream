@@ -1,2 +1,2 @@
 # tradestream
-a market data streaming platform for traders and analysts
+a real time market data streaming platform
